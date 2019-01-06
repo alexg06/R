@@ -1,0 +1,83 @@
+```{r}
+#IMPORT FILE AS DATAFRAME : TrainingSet(esssai4.txt) and TestSet(essai5.txt)
+setwd('C:/DSTI/COURS DSTI/Foundations of Statistical Analysis and Machine Learning/Exemples R')
+dir()
+TrainingSet <- data.frame(read.table('essai4.txt'))
+TestSet <- data.frame(read.table('essai5.txt'))
+```
+```{r}
+#SHAPE OF DATASETS
+head(TrainingSet)
+head(TestSet)
+```
+
+```{r}
+#PLOT OBSERVATIONS AND CREATE THE LINEAR MODEL : LinearModel
+LinearModel <- lm(V2 ~ V1, data = TrainingSet)
+LinearModel
+summary(LinearModel)
+plot(TrainingSet$V1, TrainingSet$V2, main = 'Training Set Points')
+legend(x = 6, y = 4, legend=c("Training"),   col=c("black"), pch=1, cex=0.8)
+legend(x = 3, y = -1, legend = c("R = 0.8886", "Slope = -2.1043", "Intercept = 10.502"))
+abline(LinearModel, col='red')
+
+```
+
+```{r}
+#PREDICTIONS OF TESTSET
+PredictValues <- predict(LinearModel, TestSet)
+#PLOT PREDICT VS MEASURED
+plot(PredictValues, TestSet$V2, xlab = 'PREDICTED', ylab = 'MEASURED')
+```
+
+```{r}
+
+plot(TestSet$V1, PredictValues, col = 'red', ylab ='V2', pch = 1, main = 'Plotting measured & predicted')
+par(new=TRUE, xaxs = "r", yaxt = "n", xaxt = "n")
+plot(TestSet$V1, TestSet$V2, col = 'blue', ylab ='V2', pch = 2)
+legend(x = 6, y = 4, legend=c("Predicted", "Measured"),   col=c("red", "blue"), pch=1:2, cex=0.8)
+```
+```{r}
+V1col <- TestSet$V1
+PredictCol <- PredictValues
+V2col <- TestSet$V2
+V1col
+V2col
+PredictCol
+```
+
+```{r}
+#V1col : observation
+#V2col : measured
+#Predict : value predicted by linear model
+#Residualcol : is equal to the difference between prediction and observation
+
+PredictedSet <- data.frame(V1col, V2col, PredictCol)
+ResidualCol <- PredictValues - V2col
+cbind(PredictedSet, ResidualCol)
+```
+
+```{r}
+#SUPER PLOT
+Xlim <- c(min(TrainingSet$V1), max(TrainingSet$V1)) #limit of x axis
+Ylim <- c(min(TrainingSet$V2), max(TrainingSet$V2)) #limit of y axis
+newx = seq(min(TrainingSet$V1),max(TrainingSet$V1),length.out = 50) #generating X coordinates
+#prediction of the confidence interval with function predict()
+conf_interval <- predict(LinearModel, newdata=data.frame(V1=newx), interval="confidence", level = 0.95)
+#plot TrainingSet dots from essai4.txt
+plot(TrainingSet$V1, TrainingSet$V2, xlab="x", ylab="y", xlim=Xlim, ylim=Ylim)
+#plot linear regression model Line
+abline(10.502, -2.104 , col="green")
+#plot confidence interval
+lines(newx, conf_interval[,2], col="blue", lty=2, xlim=Xlim, ylim=Ylim)
+lines(newx, conf_interval[,3], col="blue", lty=2, xlim=Xlim, ylim=Ylim)
+par(new=TRUE, xaxs = "r", yaxt = "n", xaxt = "n")
+#plot Predicted Values from Test Set dots (essai5.txt))
+plot(TestSet$V1, PredictValues, col = 'red', ylab ='V2', pch = 2, main = 'Trained, measured & predicted', xlim=Xlim, ylim=Ylim)
+par(new=TRUE, xaxs = "r", yaxt = "n", xaxt = "n")
+#plot True Values from Test Set dots (essai5.txt))
+plot(TestSet$V1, TestSet$V2, col = 'blue', ylab ='V2', pch = 3, xlim=Xlim, ylim=Ylim)
+#legends
+legend(x = 5, y = 6, legend=c("TrainSet obs. essai4.txt", "Prediction obs.", "TestSet obs. essai5.txt"),   col=c("black", "red", "blue"), pch=1:3, cex=0.8)
+legend(x = 2.3, y = -2, legend=c("Linear Reg.", "95% Conf. Interval"),   col=c("green", "blue"), lty=1:2, cex=0.8)
+```
