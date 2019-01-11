@@ -1,0 +1,80 @@
+```{r}
+setwd('C:/Projects IT/R/hSE/')
+dir()
+df <- data.frame(read.csv('hFE.csv', header=TRUE, sep=';', dec=","))
+```
+
+```{r}
+head(df)
+```
+
+```{r}
+dim(df)
+```
+```{r}
+str(df)
+```
+
+```{r}
+
+```
+```{r}
+names(df)[4] <-  'etr'
+names(df)
+```
+
+```{r}
+summary(df)
+```
+
+```{r}
+pairs(df) #to find linear correlation between variables
+```
+```{r}
+round(cor(df), 3)
+```
+
+```{r}
+x <- as.matrix(df) #matrix of the dataframe df
+
+x[,1] <-  1 #transform the gain(col1) into 1
+y <- as.matrix(df$gain) #extract the gain column in matrix
+
+theata.est <- solve(t(x)%*%x)%*%t(x)%*%y #solve a system of equations, return all beta coefficient (vector)
+
+n <- length(y) #return the number of rows/observations
+p <- ncol(x) #return the number of columns/variables
+sigma.est <- sqrt((sum(x%*%theata.est-y)^2 / (n-p)))
+
+v <- solve(t(x)%*%x)*(sigma.est)^2
+
+print(v)
+stddev <- sqrt(diag(v))
+
+```
+
+```{r}
+#PLOT OBSERVATIONS AND CREATE THE LINEAR MODEL : LinearModel
+MultipleLM <- lm(gain ~ emitter + base + etr, data = df)
+summary(MultipleLM)
+```
+
+```{r}
+print("Coefficients:")
+coefficients(MultipleLM) # model coefficients
+print("Confidence Interval:")
+confint(MultipleLM, level=0.95) # CIs for model parameters
+print("Predicted Values:")
+fitted(MultipleLM) # predicted values
+predictList <- fitted(MultipleLM)
+print("Residuals:")
+residuals(MultipleLM) # residuals
+print("Covariance Matrix:")
+vcov(MultipleLM) # covariance matrix for model parameters 
+```
+
+```{r}
+cat("Gain predicted for 2d observation is ", predictList[2])
+cat("\nGain measured for 2d observation is ", df[2,1])
+```
+
