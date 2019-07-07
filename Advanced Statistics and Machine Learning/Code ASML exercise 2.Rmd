@@ -1,0 +1,213 @@
+```{r}
+library(MASS)
+library(rpart)
+library(stats)
+library(utils)
+library(mice)
+library(forcats)
+library(car)
+library(e1071)
+library(caret)
+library(rminer)
+library(dplyr)
+```
+
+```{r}
+df <- read.csv2("Dataset Exercise 2.csv", header = T, sep = ",")
+df$lnPrice <- log(df$SalePrice)
+```
+
+```{r}
+summary(df)
+
+```
+
+```{r}
+hist(df$SalePrice, main = "SalePrice", breaks = 20, col="orange", freq=F)
+lines(density(df$SalePrice, adjust=1), col="red")
+hist(log(df$SalePrice), main = "log(SalePrice)", breaks = 20, col="orange", freq=F)
+lines(density(log(df$SalePrice), adjust=1), col="green")
+```
+
+
+
+```{r}
+df$SalePrice <- NULL
+df["Id"] <- NULL
+df$Utilities <- NULL
+
+
+df$MoSold <- factor(df$MoSold)
+df$YrSold <- factor(df$YrSold)
+df$MSSubClass <- factor(df$MSSubClass)
+df$OverallCond <- factor(df$OverallCond)
+df$OverallQual <- factor(df$OverallQual)
+df$GarageCars <- factor(df$GarageCars)
+df$Fireplaces <- factor(df$Fireplaces)
+df$FullBath <- factor(df$FullBath)
+df$HalfBath <- factor(df$HalfBath)
+
+for (i in c("Alley", "MasVnrType", "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType2", "FireplaceQu", "GarageQual","GarageCond", "PoolQC","Fence","MiscFeature", "GarageFinish", "GarageType",  "BsmtFinType1", "Electrical", "Functional", "MSZoning","SaleType", "KitchenQual", "Condition2", "Condition1", "Exterior2nd")) {
+  df[,i] <- fct_explicit_na(df[,i], "None")
+ }
+df[,"Exterior1st"] <- fct_explicit_na(df[,"Exterior1st"], "VinylSd")
+
+df$YearBltCat <- car::recode(df$YearBuilt, "1800:1899=1;  1900:1930=2; 1931:1945=3; 1946:1960=4; 1961:1975=5; 1976:1990=6; 1991:2000=7;else=8")
+summary(df$YearBltCat)
+df$YearBltCat <- as.factor(df$YearBltCat)
+df$YearBuilt <- NULL
+
+df$YearRemoCat <- car::recode(df$YearRemodAdd, "1800:1899=1;  1900:1930=2; 1931:1945=3; 1946:1960=4; 1961:1975=5; 1976:1990=6; 1991:2000=7;else=8")
+summary(df$YearRemoCat)
+df$YearRemoCat <- as.factor(df$YearRemoCat)
+df$YearRemodAdd <- NULL
+
+
+df$YearGrgBltCat <- car::recode(df$GarageYrBlt, "1800:1899=1;  1900:1930=2; 1931:1945=3; 1946:1960=4; 1961:1975=5; 1976:1990=6; 1991:2000=7;else=8")
+summary(df$YearGrgBltCat)
+df$YearGrgBltCat <- as.factor(df$YearGrgBltCat)
+df$GarageYrBlt <- NULL
+
+
+df$MasVnrArea[is.na(df$MasVnrArea)] <- median(df$MasVnrArea, na.rm = TRUE)
+df$LotFrontage[is.na(df$LotFrontage)] <- median(df$LotFrontage, na.rm = TRUE)
+df$BsmtFinSF1[is.na(df$BsmtFinSF1)] <- median(df$BsmtFinSF1, na.rm = TRUE)
+df$BsmtFinSF2[is.na(df$BsmtFinSF2)] <- median(df$BsmtFinSF2, na.rm = TRUE)
+df$BsmtUnfSF[is.na(df$BsmtUnfSF)] <- median(df$BsmtUnfSF, na.rm = TRUE)
+df$TotalBsmtSF[is.na(df$TotalBsmtSF)] <-median(df$TotalBsmtSF, na.rm = TRUE)
+df$BsmtFullBath[is.na(df$BsmtFullBath)] <- median(df$BsmtFullBath, na.rm = TRUE)
+df$BsmtHalfBath[is.na(df$BsmtHalfBath)] <- median(df$BsmtHalfBath, na.rm = TRUE)
+df$GarageCars[is.na(df$GarageCars)] <- 0
+df$GarageArea[is.na(df$GarageArea)] <- 0
+
+set.seed(1234)
+train <- sample(nrow(df), 0.8*nrow(df), replace = FALSE)
+train_Set <- df[train,]
+test_Set <- df[-train,]
+
+
+
+#FEATURE SCALING
+scaleFct <- function(x,y) { (min(x) - y) / (min(x) - max(x))}
+scale1 <- train_Set
+scale2 <- test_Set
+
+for (i in colnames(test_Set[1:78]))  {
+
+  if (class(test_Set[,i]) != "factor" & i != 'lnPrice') {
+    train_Set[i] <- scaleFct(scale1[i], scale1[i])
+    test_Set[i] <- scaleFct(scale1[i], scale2[i])
+  }
+}
+```
+
+```{r}
+
+modelSVM <- svm(lnPrice ~ .,  data = train_Set, cost = 3)
+modelSVM
+predictSVM <- predict(modelSVM, newdata = test_Set)
+
+
+```
+
+
+
+```{r}
+library(modelr)
+RMSE(exp(predictSVM), exp(test_Set$lnPrice))
+rmse(modelSVM, train_Set)
+plot(exp(predictSVM), exp(test_Set$lnPrice), main = 'Prediction vs Reality')
+```
+```{r}
+#RESIDUALS SVM
+residualsSVM <- exp(predictSVM) - exp(test_Set$lnPrice)
+hist(residualsSVM, breaks = 40)
+plot(residualsSVM, main = 'SVM residuals')
+mean(residualsSVM)
+```
+
+
+```{r}
+library(Matrix)
+train_matrix <- model.matrix(lnPrice ~ ., data = train_Set[,-1])
+test_matrix <- model.matrix(lnPrice ~ ., data = test_Set[,-1])
+library(xgboost)
+modelXGB <- xgboost(data=train_matrix,nfold=5,label=as.matrix(train_Set$lnPrice),nrounds=300,verbose=F,eval_metric='rmse')
+
+```
+
+```{r}
+predictXGB <- predict(modelXGB, newdata = test_matrix)
+RMSE(exp(predictXGB), exp(test_Set$lnPrice))
+
+plot(exp(predictXGB), exp(test_Set$lnPrice), main = 'Prediction vs Reality XGB')
+
+```
+```{r}
+#RESIDUALS XGB
+residualsXGB <- exp(predictXGB) - exp(test_Set$lnPrice)
+hist(residualsXGB, breaks = 40)
+plot(residualsXGB, main = 'XGB residuals')
+mean(residualsXGB)
+```
+```{r}
+library(randomForest)
+
+modelRF <- randomForest(lnPrice ~ .,  data = train_Set, cost = 3, ntree = 1000)
+plot(modelRF)
+predictRF <- predict(modelRF, newdata = test_Set)
+RMSE(exp(predictRF), exp(test_Set$lnPrice))
+rmse(modelRF, train_Set)
+plot(exp(predictRF), exp(test_Set$lnPrice), main = 'Prediction vs Reality RF')
+
+```
+```{r}
+#RESIDUALS RF
+residualsRF <- exp(predictRF) - exp(test_Set$lnPrice)
+hist(residualsRF, breaks = 40)
+plot(residualsRF, main = 'RF residuals')
+mean(residualsRF)
+```
+
+```{r}
+#OPTIMIZATION OF THE SVM
+cost <- seq(1,20, by=0.5)
+resultList <- c()
+for (i in cost) {
+  modelOpt <- svm(lnPrice ~ .,  data = train_Set, cost = i)
+  predictOpt <- predict(modelOpt, newdata = test_Set)
+  print(i)
+  result <- RMSE(exp(predictOpt), exp(test_Set$lnPrice))
+  print(result)
+  resultList <- cbind(resultList, result)
+}
+plot(x = cost, y = resultList, main = 'Optimization Cost Parameter')
+```
+```{r}
+#OPTIMIZATION OF THE SVM
+gamma <- seq(0.0001,0.002, by=0.0001)
+resultList <- c()
+for (i in gamma) {
+  modelOpt <- svm(lnPrice ~ .,  data = train_Set, cost = 11, gamma = i)
+  predictOpt <- predict(modelOpt, newdata = test_Set)
+  print(i)
+  result <- RMSE(exp(predictOpt), exp(test_Set$lnPrice))
+  print(result)
+  resultList <- cbind(resultList, result)
+}
+plot(x = gamma, y = resultList, main = 'Optimization Gamma Parameter')
+```
+
+BEST MODEL
+```{r}
+modelSVM <- svm(lnPrice ~ .,  data = train_Set, cost = 11, gamma = 0.0010)
+predictSVM <- predict(modelSVM, newdata = test_Set)
+RMSE(exp(predictSVM), exp(test_Set$lnPrice))
+rmse(modelSVM, train_Set)
+plot(exp(predictSVM), exp(test_Set$lnPrice), main = 'Prediction vs Reality BEST SVM')
+residualsSVM <- exp(predictSVM) - exp(test_Set$lnPrice)
+hist(residualsSVM, breaks = 40)
+plot(residualsSVM, main = 'SVM residuals')
+mean(residualsSVM)
+```
+
