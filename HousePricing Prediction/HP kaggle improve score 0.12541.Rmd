@@ -1,0 +1,332 @@
+```{r}
+library(MASS)
+library(rpart)
+library(stats)
+library(utils)
+library(mice)
+library(forcats)
+library(car)
+library(e1071)
+library(caret)
+library(rminer)
+library(dplyr)
+```
+
+```{r}
+train <- read.csv2("train.csv", header = T, sep = ",")
+test <- read.csv2("test.csv", header = T, sep = ",")
+names(train)[names(train) == "SalePrice"] <- "lnPrice"
+
+train$SF <- train$TotalBsmtSF + train$GrLivArea + train$GarageArea + train$PoolArea
+test$SF <- test$TotalBsmtSF + test$GrLivArea + test$GarageArea + test$PoolArea
+
+train$lnPrice <- log(train$lnPrice)
+train <- train %>% filter(SF < 6000)
+train <- train %>% filter(SF > 1000)
+
+train$diffYear <- train$YearRemodAdd - train$YearBuilt
+test$diffYear <- test$YearRemodAdd - test$YearBuilt
+
+train$bathX2 <- train$FullBath ^ 2
+test$bathX2 <- test$FullBath ^ 2
+
+lnPrice <- train$lnPrice
+
+head(train)
+```
+
+
+
+```{r}
+plot(train$SF, train$lnPrice)
+cor(train$SF, train$lnPrice)
+```
+
+
+```{r}
+train$prixm2 <- 1
+train$estimation <- 2
+test$prixm2 <- 1
+test$estimation <- 2
+neighb <- unique(train$Neighborhood)
+for (i in neighb) { 
+                    print(i)
+                    filt <- train %>% filter(Neighborhood == i)
+                    m <- mean(exp(filt$lnPrice) / filt$SF)
+                    s <- sd(exp(filt$lnPrice) / filt$SF)
+                    index1 <- train$Neighborhood == i
+                    index2 <- test$Neighborhood == i
+                    train$prixm2[index1] <- round(m,0)
+                    test$prixm2[index2] <- round(m,0)
+}
+```
+
+
+```{r}
+train$lnPrice <- NULL
+
+train["Id"] <- NULL
+train$Utilities <- NULL
+test["Id"] <- NULL
+test$Utilities <- NULL
+
+
+
+
+
+df <- rbind(train,test)
+
+
+df$MSSubClass <- factor(df$MSSubClass)
+df$OverallCond <- factor(df$OverallCond)
+df$HalfBath <- factor(df$HalfBath)
+
+for (i in c("Alley", "MasVnrType", "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType2", "FireplaceQu", "GarageQual","GarageCond", "PoolQC","Fence","MiscFeature", "GarageFinish", "GarageType",  "BsmtFinType1", "Electrical", "Functional", "MSZoning","SaleType", "KitchenQual", "Condition2", "Condition1", "Exterior2nd")) {
+  df[,i] <- fct_explicit_na(df[,i], "None")
+ }
+df[,"Exterior1st"] <- fct_explicit_na(df[,"Exterior1st"], "None")
+
+df$YearBuilt[is.na(df$YearBuilt)] <- median(df$YearBuilt, na.rm = TRUE)
+df$YearRemodAdd[is.na(df$YearRemodAdd)] <- median(df$YearRemodAdd, na.rm = TRUE)
+df$GarageYrBlt[is.na(df$GarageYrBlt)] <- median(df$GarageYrBlt, na.rm = TRUE)
+
+
+df$MasVnrArea[is.na(df$MasVnrArea)] <- 0
+df$LotFrontage[is.na(df$LotFrontage)] <- 0
+df$BsmtFinSF1[is.na(df$BsmtFinSF1)] <- 0
+df$BsmtFinSF2[is.na(df$BsmtFinSF2)] <- 0
+df$BsmtUnfSF[is.na(df$BsmtUnfSF)] <- 0
+df$TotalBsmtSF[is.na(df$TotalBsmtSF)] <-0
+df$BsmtFullBath[is.na(df$BsmtFullBath)] <- 0
+df$BsmtHalfBath[is.na(df$BsmtHalfBath)] <- 0
+df$GarageCars[is.na(df$GarageCars)] <- 0
+df$GarageArea[is.na(df$GarageArea)] <- 0
+
+df$SF[is.na(df$SF)] <- median(df[1:1455,'SF'], na.rm = TRUE)
+
+
+for (i in colnames(df)) {
+      if (class(df[,i]) == 'character') {
+        df[,i] <- factor(df[,i])
+      }
+  
+}
+
+
+```
+
+
+
+
+```{r}
+
+plot(train$estimation, lnPrice)
+cor(train$estimation, lnPrice)
+```
+```{r}
+hist(train$SF, breaks = 40)
+```
+
+```{r}
+#train$estimation <- NULL
+```
+
+```{r}
+library(modelr)
+
+train <- df[1:1448,]
+train$lnPrice <- lnPrice
+
+test <- df[1449:2907,]
+modelSVM <- svm(lnPrice ~ .,  data = train)
+predictSVM <- predict(modelSVM, newdata = test)
+
+```
+
+
+
+
+```{r}
+library(randomForest)
+
+modelRF <- randomForest(lnPrice ~ .,  data = train, cost = 3, ntree = 1000)
+predictRF <- predict(modelRF, newdata = test)
+
+```
+
+```{r}
+library(Matrix)
+df$lnPrice <- rnorm(2907, 1, 0.5)
+df_matrix <- model.matrix(lnPrice ~ ., data = df[,-1])
+train_matrix <- df_matrix[1:1448,]
+test_matrix <- df_matrix[1449:2907,]
+
+```
+
+```{r}
+library(xgboost)
+
+modelXGB <- xgboost(data=as.matrix(train_matrix),nfold=6,label=as.matrix(train$lnPrice),nrounds=184,
+                                      verbose=F,eval_metric='rmse', eta=0.2, nthread=2, max_depth=3,
+                                      lambda=0.5, alpha=0.01, base_score=0.5)
+library(caret)
+predictXGB <- predict(modelXGB, newdata = test_matrix)
+```
+
+
+```{r}
+train_lm <- data.frame(train_matrix)
+train_lm$lnPrice <- train$lnPrice
+modelLM <- lm(lnPrice ~ ., data = train_lm)
+library(caret)
+predictLM <- predict(modelLM, newdata = data.frame(test_matrix))
+```
+
+
+
+```{r}
+library(glmnet)
+
+modelRIDGE <- cv.glmnet(train_matrix, train$lnPrice, standardize=TRUE, alpha=0.1)
+predictRIDGE <- predict(modelRIDGE, test_matrix)
+plot(exp(predictRIDGE), exp(predictSVM))
+
+```
+
+#########ENSEMBLE##########
+```{r}
+result <- data.frame((35 * predictSVM + 75 * predictXGB + 7 * predictRF + 65 * predictLM + 15* predictRIDGE) / 197)
+head(result)
+a <- c(result[,1])
+a
+
+
+ID <- read.csv2("test.csv", header = T, sep = ",")
+ID
+export <- data.frame(ID$Id, exp(a))
+
+colnames(export) <- c("Id", "SalePrice")
+export
+write.csv(export, file ="export.csv", row.names=FALSE)
+
+```
+
+```{r}
+hist(predictSVM, col=rgb(1,0,0,0.5), main='Overlapping Histogram', breaks=60, xlim = c(10,15))
+hist(predictXGB, col=rgb(0.2,0,1,0.5), add=T, breaks=60)
+hist(predictLM, col=rgb(0,1,0.75,0.5), add=T, breaks=60)
+hist(a, col=rgb(0,1,1,0.75), add=T, breaks=60)
+hist(train$lnPrice, col=rgb(0.25,1,1,0.75), add=T, breaks=60)
+box()
+param <- function(x) { 
+          me <- mean(x)
+          sd <- sd(x)
+          ret <- c(me,sd)
+}
+print(param(a))
+print(param(predictSVM))
+print(param(predictXGB))
+print(param(predictLM))
+print(param(predictRIDGE))
+print(param(train$lnPrice))
+```
+```{r}
+hist(a, col=rgb(0.25,1,1,0.75),  breaks=60, xlim = c(10,15))
+```
+```{r}
+train$lnPrice <- lnPrice
+plot(exp(train$lnPrice)-train$estimation)
+qqnorm(exp(train$lnPrice)-train$estimation)
+print('mean')
+mean(exp(train$lnPrice)-train$estimation)
+print('sd')
+sd(exp(train$lnPrice)-train$estimation)
+print('min')
+min(exp(train$lnPrice)-train$estimation)
+print('max')
+max(exp(train$lnPrice)-train$estimation)
+```
+
+```{r}
+plot(exp(a)-test$estimation)
+qqnorm(exp(a)-test$estimation)
+print('mean')
+mean(exp(a)-test$estimation)
+print('sd')
+sd(exp(a)-test$estimation)
+print('min')
+min(exp(a)-test$estimation)
+print('max')
+max(exp(a)-test$estimation)
+```
+
+```{r}
+# ensure the results are repeatable
+set.seed(7)
+# load the library
+library(mlbench)
+library(caret)
+
+rest <- c()
+for (i in seq(1,length(train),1)) {
+  if (class(train[,i]) == "integer" | class(train[,i]) == "numeric") {
+    tmp <- i
+    rest <-c(append(rest, tmp))
+  }
+}
+rest
+
+
+# calculate correlation matrix
+correlationMatrix <- cor(train[,rest])
+# summarize the correlation matrix
+print(correlationMatrix)
+# find attributes that are highly corrected (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+# print indexes of highly correlated attributes
+print(highlyCorrelated)
+```
+
+```{r}
+set.seed(7)
+# load the library
+library(mlbench)
+library(caret)
+# load the dataset
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+# train the model
+model <- train(lnPrice~., data=train[,rest], method="neuralnet", preProcess="scale", trControl=control)
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+# summarize importance
+print(rownames(importance))
+# plot importance
+plot(importance)
+```
+
+```{r}
+library (cvTools)
+
+opti <- train
+
+
+
+
+
+
+fit <- svm(lnPrice ~ .,  data = opti)
+# perform cross-validation
+cvFit(fit, data = opti, y = train$lnPrice, cost = rtmspe, 
+    K = 5, R = 10, costArgs = list(trim = 0.1), seed = 1234)
+```
+
+```{r}
+
+```
+
+
+
+
+
+
