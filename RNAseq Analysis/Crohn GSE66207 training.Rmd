@@ -1,0 +1,140 @@
+```{r}
+library(edgeR)
+library(limma)
+library(Glimma)
+library(gplots)
+library(org.Mm.eg.db)
+library(RColorBrewer)
+library(factoextra)
+library(RColorBrewer) #palette color
+library(statmod)
+```
+
+```{r}
+# Read the sample information into R
+sampleinfo <- read.delim("e:/genette/data/training R/SampleInfo_Corrected.txt")
+View(sampleinfo)
+sampleinfo
+```
+
+```{r}
+# Read the data into R
+seqdata <- read.delim("e:/genette/data/training R/GSE60450_Lactation-GenewiseCounts.txt", stringsAsFactors = FALSE)
+colnames(seqdata[,3:14]) <- sampleinfo$SampleName
+head(seqdata)
+View(seqdata)
+dim(seqdata)
+```
+```{r}
+
+colnames(seqdata) <- substr(colnames(seqdata), 1, 7)
+head(seqdata)
+```
+
+```{r}
+for (i in colnames(seqdata[,3:14])) 
+  {
+        hist(log(seqdata[i]), freq=FALSE, breaks = 5)
+  }
+```
+
+
+```{r}
+group <- factor(paste0(sampleinfo$CellType, ".", sampleinfo$Status))
+head(group)
+```
+
+
+```{r}
+y <- DGEList(counts=seqdata[,3:14], genes=seqdata[,1],  group=group)
+y
+```
+
+```{r}
+y <- calcNormFactors(y, method="TMM")
+y$samples
+rownames(y$samples) <- substr(sampleinfo$SampleName, 1, 7)
+View(y$samples)
+```
+
+```{r}
+plotMDS(y)
+```
+
+```{r}
+points <- c(0,1,2,15,16,17)
+colors <- rep(c("blue", "darkgreen", "red"), 2)
+plotMDS(y, col=colors[group], pch=points[group])
+legend("topleft", legend=levels(group), pch=points, col=colors, ncol=2)
+```
+
+```{r}
+
+design <- model.matrix(~ 0 + group)
+colnames(design) <- levels(group)
+design
+
+y <- estimateDisp(y, design, robust=TRUE)
+y$common.dispersion
+plotBCV(y)
+
+```
+
+```{r}
+fit <- glmQLFit(y, design, robust=TRUE)
+head(fit$coefficients)
+
+```
+
+```{r}
+plotQLDisp(fit)
+```
+
+```{r}
+con <- makeContrasts(basal.lactate -  basal.pregnant, levels=design)
+qlf <- glmQLFTest(fit, contrast=con)
+```
+
+```{r}
+topTags(qlf, n= 20)
+
+summary(decideTests(qlf))
+
+plotMD(qlf)
+
+```
+
+
+```{r}
+tr <- glmTreat(fit, contrast=con, lfc=log2(2))
+topTags(tr, n = 100)
+```
+```{r}
+summary(decideTests(tr))
+```
+
+```{r}
+deGenes <- decideTestsDGE(tr, p=0.05)
+deGenes <- rownames(tr)[as.logical(deGenes)]
+plotSmear(tr, de.tags=deGenes)
+abline(h=c(-1, 1), col=2)
+
+```
+
+
+```{r}
+con <- makeContrasts( luminal.PvsL = luminal.pregnant - luminal.lactate,
+ luminal.VvsL = luminal.virgin - luminal.lactate,
+luminal.VvsP = luminal.virgin - luminal.pregnant, levels=design)
+anov <- glmQLFTest(fit, contrast=con)
+topTags(anov)
+```
+
+```{r}
+library(GO.db)
+con <- makeContrasts(basal.lactate - basal.pregnant, levels=design)
+qlf <- glmQLFTest(fit, contrast=con)
+go <- goana(qlf, species = "Mm")
+topGO(go, n=30, truncate=30)
+```
+
